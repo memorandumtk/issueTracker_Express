@@ -7,7 +7,6 @@ chai.use(chaiHttp);
 
 const Issue = require("../models/issue");
 const Project = require("../models/project");
-const issue = require('../models/issue');
 
 // This test is not exact able to check output though,
 // I left it as I succeeded to assert.
