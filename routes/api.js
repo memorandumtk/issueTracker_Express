@@ -2,6 +2,7 @@
 const { object } = require("mongoose/lib/utils");
 const Issue = require("../models/issue");
 const Project = require("../models/project");
+const { response } = require("express");
 
 module.exports = function (app) {
 
@@ -17,142 +18,207 @@ module.exports = function (app) {
   // Request Handler section from here
   // Creating project called from issueCreate
   const projectCreate = async (project) => {
-    // if project name is not existed in projects collection...
+    let projectObj;
+    // if project name is not existed in projects collection
     const checkObj = await Project.findOne({ name: project }).exec();
-    if (checkObj == null) {
-      const projectObj = new Project({
+    if (checkObj != null) {
+      projectObj = checkObj;
+    } else {
+      projectObj = new Project({
         name: project,
       });
-      // projectObj.issues.push(issueId);
-      console.log(projectObj)
       await projectObj.validate();
       projectObj.save();
-      // } else {
-      //   checkObj.issues.push(issueId)
-      //   console.log(checkObj)
-      //   await checkObj.validate();
-      //   checkObj.save();
-      // }
+    }
+    return projectObj;
+  }
+
+  // Post method creating issue
+  const issueCreate = async (req, res, next) => {
+    let project = req.params.project;
+    let projectObj = await projectCreate(project);
+    const reqIssue = req.body;
+    const issueObj = new Issue({
+      issue_title: reqIssue.issue_title,
+      issue_text: reqIssue.issue_text,
+      created_on: new Date().toISOString(),
+      updated_on: new Date().toISOString(),
+      created_by: reqIssue.created_by,
+      assigned_to: reqIssue.assigned_to,
+      open: true,
+      status_text: reqIssue.status_text,
+      project: projectObj._id
+    });
+    try {
+      await issueObj.validate()
+      issueObj.save();
+      // console.log(issueObj);
+      res.send(issueObj)
+    } catch (error) {
+      res.send({ error: 'required field(s) missing' });
     }
   }
 
-    // Post method creating issue
-    const issueCreate = async (req, res, next) => {
-      let project = req.params.project;
-      let projectObj = await projectCreate(project);
-      const reqIssue = req.body;
-      const issueObj = new Issue({
-        issue_title: reqIssue.issue_title,
-        issue_text: reqIssue.issue_text,
-        created_by: reqIssue.created_by,
-        assigned_to: reqIssue.assigned_to,
-        status_text: reqIssue.status_text,
-        created_on: Date.now(),
-        updated_on: Date.now(),
-        open: reqIssue.open,
-        project: projectObj._id 
-      });
-      try {
-        await issueObj.validate()
-        issueObj.save();
-        console.log(issueObj);
-        res.send({ "assigned_to": issueObj.assigned_to, "status_text": issueObj.status_text, "open": issueObj.open, "_id": issueObj._id, "issue_title": issueObj.issue_title, "issue_text": issueObj.issue_text, "created_by": issueObj.created_by, "created_on": issueObj.created_on, "updated_on": issueObj.updated_on })
-      } catch (error) {
-        res.send({ error: 'required field(s) missing' });
-        // res.send({ error: 'required field(s) missing' });
-      }
+  // GET method
+  const issueGet = async (req, res, next) => {
+    let project = req.params.project;
+    try {
+      let findProject = await Project
+        .findOne({ name: project })
+        .populate('issues')
+        .exec();
+      res.send(findProject.issues);
+    } catch {
+      next()
     }
+  }
+  // If query parameter is coming, this function is exected
+  const issueGetWithQuery = async (req, res, next) => {
+    const project = req.params.project;
+    const query = req.query;
+    let filter = {};
+    for (let q in query) {
+      filter[q] = query[q];
+    }
+    try {
+      let findProject = await Project
+        .findOne({ name: project })
+        .populate('issues')
+        .find(filter)
+        .exec();
+      findProject = await Issue
+        .find(filter)
+        .exec();
+      // console.log(findProject);
+      res.send(findProject);
+    } catch {
+      next()
+    }
+  }
 
-    // GEt method
-    const issueGet = async (req, res, next) => {
-      let project = req.params.project;
+  // PUT method for closing issue
+  const issueUpdate = async (req, res, next) => {
+    const project = req.params.project;
+    if (req.body._id === undefined) {
+      res.json({ error: 'missing _id' });
+    } else {
+      const reqId = req.body._id;
       try {
-        let findPro = await Project
+        let findProject = await Project
           .findOne({ name: project })
-          .populate('issues')
+        let closeIssue = await Issue
+          .findOne({ project: findProject._id, _id: reqId })
           .exec();
-        // Send reuqest based on the value of query
-        let query = req.query;
-        if (Object.keys(query).length === 0) {
-          res.send(findPro.issues);
-        } else {
-          let queryResult = [];
-          for (let key of Object.keys(query)) {
-            for (let pro of findPro.issues) {
-              if (pro[key] === (query[queryString])) {
-                queryResult.push(pro)
+        try {
+          let queryFlag = false; //flag to call 'no field sent'
+          // the case query includes only _id.
+          if (Object.keys(req.body).length > 1) {
+            for (let b in req.body) {
+              if (b != '_id' && b in closeIssue === false) {
+                queryFlag = true;
+                break;
+              } else {
+                closeIssue[b] = req.body[b];
               }
             }
+          } else {
+            queryFlag = true;
           }
-          // console.log(queryResult);
-          res.send(queryResult);
+          if (queryFlag === false) {
+            closeIssue.updated_on = new Date().toISOString();
+            await closeIssue.save();
+            res.json({ result: 'successfully updated', '_id': reqId });
+          } else {
+            res.json({ error: 'no update field(s) sent', '_id': reqId })
+          }
+        } catch {
+          res.json({ error: 'could not update', '_id': reqId });
         }
       } catch {
-        next()
+        res.json({ error: 'could not update', '_id': reqId });
       }
     }
+  }
 
-    // PUT method for closing issue
-    const issueClose = async (req, res) => {
-      const project = req.params.project;
-      const reqId = { _id: req.body._id };
-      const reqOpen = { open: req.body.open };
-      const updatedOn = { updated_on: Date.now() };
-      if (await Issue.findOne({ _id: reqId })) {
-        const closeIssue = await Issue
-          .findOneAndUpdate(reqId, updatedOn, { new: true })
-          .findOneAndUpdate(reqId, reqOpen, { new: true })
-        console.log(closeIssue)
-        res.send({ "result": "successfully updated", "_id": req.body._id })
+  // DELETE method for deleting issue
+  const issueDelete = async (req, res) => {
+    const project = req.params.project;
+    if (req.body._id === undefined) {
+      res.json({ error: 'missing _id' });
+    } else {
+      const reqId = req.body._id;
+      try {
+        let findProject = await Project
+          .findOne({ name: project })
+        let deleteIssue = await Issue
+          .deleteOne({ project: findProject._id, _id: reqId })
+        if (deleteIssue.deletedCount == 0) {
+          res.json({ error: 'could not delete', '_id': reqId });
+        } else {
+          res.json({ result: 'successfully deleted', '_id': reqId });
+        }
+      } catch (err) {
+        console.log(err);
+        res.json({ error: 'could not delete', '_id': reqId });
       }
     }
-    const issueDelete = async (req, res) => {
-      const project = req.params.project;
-      const reqId = { _id: req.body._id };
-      const deleteIssue = await Issue
-        .findOneAndDelete(reqId)
-      console.log(deleteIssue);
-      res.send({ "result": "successfully deleted", "_id": req.body._id })
-    }
-    // DELETE method for deleting issue
+  }
 
-    // End of Handler section
+  // End of Handler section
 
-    app.route('/api/issues/:project')
-      .get(async function (req, res, next) {
+  app.route('/api/issues/:project')
+    .get(async function (req, res, next) {
+      if (Object.keys(req.query).length === 0) {
         issueGet(req, res, next);
-      })
+      } else {
+        issueGetWithQuery(req, res, next);
+      }
+    })
 
-      .post(async function (req, res, next) {
-        issueCreate(req, res, next);
-      })
+    .post(async function (req, res, next) {
+      issueCreate(req, res, next);
+    })
 
-    // .put(function (req, res) {
-    //   issueClose(req, res);
-    // })
+    .put(function (req, res, next) {
+      issueUpdate(req, res, next);
+    })
 
-    // .delete(function (req, res) {
-    //   issueDelete(req, res);
-    // });
+    .delete(function (req, res) {
+      issueDelete(req, res);
+    });
 
-    app.route('/api/issues/delete/issues')
-      .delete(function (req, res, next) {
-        try {
-          Issue.collection.drop()
-          console.log('Deleted successfully')
-          res.send('Deleted successfully')
-        } catch (err) {
-          next(err);
-        }
-      })
-    app.route('/api/issues/delete/projects')
-      .delete(function (req, res, next) {
-        try {
-          Project.collection.drop()
-          console.log('Deleted successfully')
-          res.send('Deleted successfully')
-        } catch (err) {
-          next(err);
-        }
-      })
-  };
+
+  // Collection delete functions for test and dev.
+  app.route('/api/delete/issues')
+    .delete(function (req, res, next) {
+      try {
+        Issue.collection.drop()
+        console.log('Deleted successfully')
+        res.send('Deleted successfully')
+      } catch (err) {
+        next(err);
+      }
+    })
+  app.route('/api/delete/projects')
+    .delete(function (req, res, next) {
+      try {
+        Project.collection.drop()
+        console.log('Deleted successfully')
+        res.send('Deleted successfully')
+      } catch (err) {
+        next(err);
+      }
+    })
+  app.route('/api/delete')
+    .delete(async function (req, res, next) {
+      try {
+        await Issue.deleteMany({})
+        await Project.deleteMany({})
+        console.log('Deleted successfully')
+        res.status(200).send('Deleted successfully')
+      } catch (err) {
+        console.log(err)
+        next(err);
+      }
+    })
+};
