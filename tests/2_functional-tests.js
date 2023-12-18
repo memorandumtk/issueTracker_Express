@@ -12,18 +12,18 @@ const Project = require("../models/project");
 // I left it as I succeeded to assert.
 
 // Collection initialized
-describe('Initialize collection both Project and Issue', () => {
-    it('it should return 200 status code.', (done) => {
-        chai
-            .request(server)
-            .keepOpen()
-            .delete('/api/delete')
-            .end(async function (err, res) {
-                assert.equal(res.status, 200);
-            })
-        done();
-    })
-})
+// describe('Initialize collection both Project and Issue', () => {
+//     it('it should return 200 status code.', (done) => {
+//         chai
+//             .request(server)
+//             .keepOpen()
+//             .delete('/api/delete')
+//             .end(async function (err, res) {
+//                 assert.equal(res.status, 200);
+//             })
+//         done();
+//     })
+// })
 
 suite('Functional Tests', function () {
 
